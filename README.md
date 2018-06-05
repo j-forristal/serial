@@ -1,3 +1,12 @@
+
+CUSTOM FORK: This fork includes a Configure() function for Linux (and only Linux)
+that allows runtime reconfigure of serial port parameters (baud rate, etc.).  One
+usage example is using AT+IPR to temporarily change the baud rate of the modem, and
+not wanting to close + reopen the port to get the new baud rate.
+
+This is only for Linux, and there is no intention to try to port the functionality to the other OS flavors.  That breaks the general ABI of this module.
+
+
 [![GoDoc](https://godoc.org/github.com/tarm/serial?status.svg)](http://godoc.org/github.com/tarm/serial)
 [![Build Status](https://travis-ci.org/tarm/serial.svg?branch=master)](https://travis-ci.org/tarm/serial)
 

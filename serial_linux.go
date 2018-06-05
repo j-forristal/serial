@@ -11,6 +11,39 @@ import (
 )
 
 func openPort(name string, baud int, databits byte, parity Parity, stopbits StopBits, readTimeout time.Duration) (p *Port, err error) {
+
+	f, err := os.OpenFile(name, unix.O_RDWR|unix.O_NOCTTY|unix.O_NONBLOCK, 0666)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil && f != nil {
+			f.Close()
+		}
+	}()
+
+	p_ := &Port{f: f}
+
+	err = p_.Configure(baud, databits, parity, stopbits, readTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = unix.SetNonblock(int(f.Fd()), false); err != nil {
+		return
+	}
+
+	return p_, nil
+}
+
+type Port struct {
+	// We intentionly do not use an "embedded" struct so that we
+	// don't export File
+	f *os.File
+}
+
+func (p *Port) Configure(baud int, databits byte, parity Parity, stopbits StopBits, readTimeout time.Duration) (err error) {
 	var bauds = map[int]uint32{
 		50:      unix.B50,
 		75:      unix.B75,
@@ -50,17 +83,6 @@ func openPort(name string, baud int, databits byte, parity Parity, stopbits Stop
 		return
 	}
 
-	f, err := os.OpenFile(name, unix.O_RDWR|unix.O_NOCTTY|unix.O_NONBLOCK, 0666)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() {
-		if err != nil && f != nil {
-			f.Close()
-		}
-	}()
-
 	// Base settings
 	cflagToUse := unix.CREAD | unix.CLOCAL | rate
 	switch databits {
@@ -73,8 +95,9 @@ func openPort(name string, baud int, databits byte, parity Parity, stopbits Stop
 	case 8:
 		cflagToUse |= unix.CS8
 	default:
-		return nil, ErrBadSize
+		return ErrBadSize
 	}
+
 	// Stop bits settings
 	switch stopbits {
 	case Stop1:
@@ -83,8 +106,9 @@ func openPort(name string, baud int, databits byte, parity Parity, stopbits Stop
 		cflagToUse |= unix.CSTOPB
 	default:
 		// Don't know how to set 1.5
-		return nil, ErrBadStopBits
+		return ErrBadStopBits
 	}
+
 	// Parity settings
 	switch parity {
 	case ParityNone:
@@ -95,9 +119,10 @@ func openPort(name string, baud int, databits byte, parity Parity, stopbits Stop
 	case ParityEven:
 		cflagToUse |= unix.PARENB
 	default:
-		return nil, ErrBadParity
+		return ErrBadParity
 	}
-	fd := f.Fd()
+
+	fd := p.f.Fd()
 	vmin, vtime := posixTimeoutValues(readTimeout)
 	t := unix.Termios{
 		Iflag:  unix.IGNPAR,
@@ -117,20 +142,10 @@ func openPort(name string, baud int, databits byte, parity Parity, stopbits Stop
 		0,
 		0,
 	); errno != 0 {
-		return nil, errno
+		return errno
 	}
 
-	if err = unix.SetNonblock(int(fd), false); err != nil {
-		return
-	}
-
-	return &Port{f: f}, nil
-}
-
-type Port struct {
-	// We intentionly do not use an "embedded" struct so that we
-	// don't export File
-	f *os.File
+	return nil
 }
 
 func (p *Port) Read(b []byte) (n int, err error) {
